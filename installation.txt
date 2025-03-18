@@ -1,0 +1,9 @@
+Extra install reqs:
+-cmake
+-onnxruntime
+-insightface
+-ollama
+-llama3.2
+-pillow
+-ultralytics
+-python 3.8

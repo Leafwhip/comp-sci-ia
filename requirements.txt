@@ -1,0 +1,5 @@
+pillow
+ollama
+ultralytics
+insightface
+onnxruntime
