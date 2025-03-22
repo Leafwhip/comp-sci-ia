@@ -29,7 +29,7 @@ def detect_image(filepath):
             # add the tag to the set
             tags.add(tag_name)
 
-    return tags
+    return list(tags)
 
 def get_image_metadata(filepath):
     img = Image.open(filepath)

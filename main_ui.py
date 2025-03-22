@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import filedialog
 from tkinter import ttk
 from tkinter import messagebox
+from tkinter import simpledialog
 
 # allows for better resolution of the gui on high-dpi displays
 # without this line, the gui becomes blurry
@@ -23,47 +24,29 @@ import os
 
 import re
 
-def process_image(filepath):
+def process_image(filepath, reprocess):
     if text_processing.validate_path(filepath):
-        if database_manager.is_photo_in_database(filepath):
+        if database_manager.is_photo_in_database(filepath) and not reprocess:
             print('Photo already exists in database')
         else:
             folder_path = os.path.dirname(filepath)
             location, timestamp = image_processing.get_image_metadata(filepath)
             tags = image_processing.detect_image(filepath)
+            faces = face_processing.detect_image(filepath)[1]
+            face_tags = list(set(face_processing.label_faces(faces)))
+            face_tags = [name for name in face_tags if name]
+            tags += face_tags
             database_manager.add_photo_to_database(filepath, folder_path, location, timestamp, tags)
     else:
-        print('Invalid file path')
+        print('This file is not supported by YOLO')
 
-def process_folder(folder_path):
+def process_folder(folder_path, reprocess):
     print(folder_path)
     # iterate through files in the folder
     for filename in os.listdir(folder_path):
         # analyze every file in the folder
         filepath = os.path.join(folder_path, filename)
-        process_image(filepath)
-
-# (for testing) adds an image/video selected by the user to the database
-def open_file():
-    # open a dialog to choose a file
-    filepath = filedialog.askopenfilename()
-
-    # make sure a file is selected and analyze it if it is
-    if os.path.isfile(filepath):
-        process_image(filepath)
-    else:
-        print("No file selected")
-
-# (for testing) adds every image/video in a folder selected by the user to the database
-def open_folder():
-    # open a dialog to choose a folder
-    folder_path = filedialog.askdirectory(title="Select a Folder")
-
-    # make sure the user selected a directory (folder)
-    if folder_path:
-        process_folder(folder_path)
-    else:
-        print("No folder selected")
+        process_image(filepath, reprocess)
 
 # runs when the user submits their request
 def submit():
@@ -74,8 +57,7 @@ def submit():
     input_text.delete('1.0', tk.END)
 
     # get the tags used by YOLO11 
-    valid_tags = [tag for tag in image_processing.model.names.values()]
-
+    valid_tags = database_manager.get_found_tags()
     # sends it to the LLM
     request_output = text_processing.process_input(input, valid_tags, database_manager.get_use_metadata())
 
@@ -92,14 +74,14 @@ def submit():
 def open_image_details(filepath, photo_paths, current_index):
     details_window = tk.Toplevel(window)
     details_window.title('Image Details')
-    details_window.geometry('1152x648+100+100')
+    details_window.geometry('1728x972+100+100')
 
     image = Image.open(filepath)
     image.thumbnail((512, 512))
     tk_image = ImageTk.PhotoImage(image)
-    container_label = tk.Label(details_window, image=tk_image)
-    container_label.image = tk_image
-    container_label.pack()
+    image_container_label = tk.Label(details_window, image=tk_image)
+    image_container_label.image = tk_image
+    image_container_label.pack()
 
     def open_new_image_details(forward_bool):
         increment = 1 if forward_bool else -1
@@ -107,7 +89,7 @@ def open_image_details(filepath, photo_paths, current_index):
         details_window.destroy()
 
     button_frame = tk.Frame(details_window)
-    button_frame.pack(fill='both', expand=True)
+    button_frame.pack(fill='x')
 
     left_button = tk.Button(button_frame, text="←", command=lambda: open_new_image_details(False))
     left_button.pack(side='left', padx=20)
@@ -131,7 +113,31 @@ def open_image_details(filepath, photo_paths, current_index):
         timestamp_label = tk.Label(details_window, text=f'Date the image was taken: {readable_timestamp}')
         timestamp_label.pack()
 
-    find_faces_button = tk.Button(details_window, text='Find Faces', command=lambda: face_processing.find_faces_in_image(filepath))
+    def ask_save_face(widget):
+        name = simpledialog.askstring('', 'Enter this person\'s name, or leave blank to cancel', parent=details_window)
+        if name is not None:
+            database_manager.add_face_to_database(name, face_processing.embedding_to_blob(widget.embedding))
+            widget.config(text=name)
+
+    def find_faces():
+        cv_image, faces = face_processing.detect_image(filepath)
+        face_thumbnails = face_processing.get_face_thumbnails(cv_image, faces)
+        face_labels = face_processing.label_faces(faces)
+        
+        for index, image in enumerate(face_thumbnails):
+            tk_image = ImageTk.PhotoImage(image)
+            container_label = tk.Label(face_thumbnail_frame, image=tk_image, text=face_labels[index] or '???', compound='bottom')
+            container_label.image = tk_image
+            container_label.embedding = faces[index].normed_embedding
+            container_label.pack(padx=5, pady=5, side=tk.LEFT)
+            container_label.bind('<Button-1>', lambda e: ask_save_face(e.widget))
+
+        find_faces_button.config(state='disabled')
+    
+    face_thumbnail_frame = tk.Frame(details_window)
+    face_thumbnail_frame.pack(fill='x')
+
+    find_faces_button = tk.Button(details_window, text='Find Faces', command=lambda: find_faces())
     find_faces_button.pack()
     
 
@@ -178,7 +184,7 @@ def open_settings():
         folder_path = filedialog.askdirectory(parent=settings_window, initialdir=last_opened_dir or '/', title='Select a Folder')
 
         # make sure the user selected a directory (folder)
-        if folder_path:
+        if os.path.isdir(folder_path):
             folders_listbox.insert(tk.END, folder_path)
             database_manager.add_folder(folder_path)
             last_opened_dir = os.path.dirname(folder_path)
@@ -189,10 +195,12 @@ def open_settings():
     def select_folder():
         remove_folder_button.config(state=tk.ACTIVE)
         process_folder_button.config(state=tk.ACTIVE)
+        reprocess_folder_button.config(state=tk.ACTIVE)
 
     def deselect_folder():
         remove_folder_button.config(state=tk.DISABLED)
         process_folder_button.config(state=tk.DISABLED)
+        reprocess_folder_button.config(state=tk.DISABLED)
         folders_listbox.selection_clear(0, tk.END)
 
     def remove_selected_folder():
@@ -202,11 +210,11 @@ def open_settings():
             folders_listbox.delete(selected_index)
             deselect_folder()
 
-    def process_selected_folder():
+    def process_selected_folder(reprocess):
         selected_index = folders_listbox.curselection()
         if selected_index:
             if messagebox.askokcancel('Confirm', 'Are you sure you want to process this folder? This may take a while depending on the size of the folder.', parent=settings_window):
-                process_folder(folders_listbox.get(selected_index))
+                process_folder(folders_listbox.get(selected_index), reprocess)
                 deselect_folder()
         
     folders_label = tk.Label(settings_window, text='List of inputted folders:')
@@ -229,9 +237,13 @@ def open_settings():
     remove_folder_button.pack(padx=10, pady=10, side=tk.LEFT)
     remove_folder_button.config(state=tk.DISABLED)
 
-    process_folder_button = tk.Button(buttons_frame, text='Process Folder', command=lambda: process_selected_folder())
+    process_folder_button = tk.Button(buttons_frame, text='Process Folder', command=lambda: process_selected_folder(False))
     process_folder_button.pack(padx=10, pady=10, side=tk.LEFT)
     process_folder_button.config(state=tk.DISABLED)
+
+    reprocess_folder_button = tk.Button(buttons_frame, text='Reprocess Folder', command=lambda: process_selected_folder(True))
+    reprocess_folder_button.pack(padx=10, pady=10, side=tk.LEFT)
+    reprocess_folder_button.config(state=tk.DISABLED)
 
 # initialize the database
 database_manager.init_database()
@@ -258,20 +270,9 @@ input_text.bind('<Return>', lambda _: submit())
 submit_button = tk.Button(window, text='submit', command=submit)
 submit_button.pack()
 
-# (for testing) lets the user add one file to the database, Also prints the image's metadata
-upload_image_button = tk.Button(window, text='upload file', command=open_file)
-upload_image_button.pack()
-
-# (for testing) lets the user add one folder to the database
-upload_folder_button = tk.Button(window, text='upload folder', command=open_folder)
-upload_folder_button.pack()
-
+# for testing ofc. remove this <3
 reset_database_button = tk.Button(window, text='reset database', command=database_manager.reset_database)
 reset_database_button.pack()
-
-# (for testing) lets the user input an image of a face and name it
-#upload_face_button = tk.Button(window, text='upload face', command=face_processing.upload_face)
-#upload_face_button.pack()
 
 settings_button = tk.Button(window, text='⚙', width=3, height=1, command=open_settings)
 settings_button.place(x=10, y=10)

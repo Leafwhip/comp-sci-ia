@@ -63,10 +63,11 @@ def process_input(input, valid_tags, use_metadata):
     # this is the string that will be inputted to LLaMa3.2
     # supposed to take the user's input which describes an image,
     # and choose the tags from valid_tags that would likely be detected in that image
-    llama_request = f'Return a list of tags likely to be detected by the computer vision model YOLO11 in a picture described by the input below. Return your answer as a list surrrounded by square brackets. Try to return at least five tags, and make sure they all appear on the following list. \nOnly use tags from this list: {valid_tags}.\nThe input is: {input}'
+    llama_request = f'Return a list of tags (objects or people) likely to appear in an image described by the following input. Return your answer as a list surrounded by square brackets.\nOnly use tags from this list: {valid_tags}.\nThe input is: {input}'
     
     # get LLaMa's response to the input
-    output_tags = input_llama(llama_request)
+    output_tags = input_llama(llama_request).lower()
+    print(llama_request)
     print(output_tags)
 
     # process LLaMa's output to a usable list of tags
@@ -77,26 +78,27 @@ def process_input(input, valid_tags, use_metadata):
     output_tags = re.search(r'\[.*\]', output_tags)
     if output_tags:
         # gets a list of every tag in the list
-        output_tags = re.findall(r'(\w+ *\w+)+', output_tags[0], re.IGNORECASE)
-
-    # error if no tags were generated
-    if len(output_tags) == 0:
+        output_tags = re.findall(r'(\w+ *\w+)+', output_tags[0])
+    else:
+        # error if no tags were generated
         print('Error: no tags were generated for this request')
 
     print(output_tags)
 
     if use_metadata:
-        llama_location_request = f'Return approximate latitude and longitude coordinates where an image described by the input below might have been taken. The coordinates don\'t have to be exact but should be reasonably close to the location specified. For example, the input "A picture of Yellowstone National Park at night" should output [44.4280, -110.5885]. The coordinates should be in the form [Latitude (° N), Longitude (° E)]. Only output the coordinates, and nothing else.\nThe input is: {input}'
+        llama_location_request = f'Return approximate latitude and longitude coordinates where an image described by the input below might have been taken. The coordinates don\'t have to be exact but should be reasonably close to the location specified. Return the coordinates formatted like so: [Latitude (° N), Longitude (° E)].\nThe input is: {input}'
         output_location = input_llama(llama_location_request)
+        print(llama_location_request)
         print(output_location)
 
         current_date = datetime.now().date()
-        llama_timestamp_request = f'Return a likely date an image described by the input below might have been taken. Return the date in the form [YYYY:MM:DD] surrounded by square brackets, and ONLY the date. The current date is {current_date}.\nThe input is: {input}'
+        llama_timestamp_request = f'Return a likely date an image described by the input below might have been taken. Return the date in the form [YYYY:MM:DD] surrounded by square brackets. The current date is {current_date}.\nThe input is: {input}'
         output_timestamp = input_llama(llama_timestamp_request)
+        print(llama_timestamp_request)
         print(output_timestamp)
 
         output_location = re.sub(r'[\r\n]', '', output_location)
-        output_location = re.match(r'\[.*\]', output_location)
+        output_location = re.search(r'\[.*\]', output_location)
         if output_location:
             output_location = re.findall(r'[\d\.]+', output_location[0])
             output_location = [float(n) for n in output_location]
@@ -106,7 +108,7 @@ def process_input(input, valid_tags, use_metadata):
         print(output_location)
 
         output_timestamp = re.sub(r'[\r\n]', '', output_timestamp)
-        output_timestamp = re.match(r'\[.*\]', output_timestamp)
+        output_timestamp = re.search(r'\[.*\]', output_timestamp)
         if output_timestamp:
             output_timestamp = re.findall(r'\d+', output_timestamp[0])
             output_timestamp = [int(n) for n in output_timestamp]

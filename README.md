@@ -1,2 +1,0 @@
-# comp-sci-ia
- 

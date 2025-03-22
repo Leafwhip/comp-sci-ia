@@ -10,22 +10,21 @@ def init_database():
     # creates the photos table with an id, the path to the image, and optionally the time and location of the image
     cursor.execute('''CREATE TABLE IF NOT EXISTS photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filepath TEXT NOT NULL,
+            filepath TEXT UNIQUE NOT NULL,
             folder_path TEXT NOT NULL,
             location TEXT,
             timestamp TEXT
             )''')
 
-    # creates the tags table which identifies every tag detected in an image (needed to retrieve data about images)
-    cursor.execute('''CREATE TABLE IF NOT EXISTS tags (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tag TEXT UNIQUE NOT NULL
+    # creates the photo_tags table which matches each image to one or more tags
+    cursor.execute('''CREATE TABLE IF NOT EXISTS photo_tags (
+            photo_id INTEGER,
+            tag_name TEXT
             )''')
-
-    # creates the image_tags table which matches each image to one or more tags
-    cursor.execute('''CREATE TABLE IF NOT EXISTS image_tags (
-            image_id INTEGER,
-            tag_id INTEGER
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS faces (
+            name TEXT UNIQUE NOT NULL,
+            embedding BLOB NOT NULL
             )''')
     
     cursor.execute('''CREATE TABLE IF NOT EXISTS folders (
@@ -38,7 +37,7 @@ def init_database():
             max_photos INTEGER,
             last_opened_dir TEXT
             )''')
-    
+        
     cursor.execute('INSERT OR IGNORE INTO settings (id, use_metadata, max_photos, last_opened_dir) VALUES (?, ?, ?, ?)', (1, False, 25, '/'))
     
     # commit the changes and close the connection
@@ -54,13 +53,16 @@ def reset_database():
     # remove the tables in the database
     cursor.execute('DROP TABLE IF EXISTS photos')
     cursor.execute('DROP TABLE IF EXISTS tags')
-    cursor.execute('DROP TABLE IF EXISTS image_tags')
+    cursor.execute('DROP TABLE IF EXISTS photo_tags')
+    cursor.execute('DROP TABLE IF EXISTS faces')
     cursor.execute('DROP TABLE IF EXISTS folders')
     cursor.execute('DROP TABLE IF EXISTS settings')
 
     # commit the changes and close the connection
     conn.commit()
     conn.close()
+
+    init_database()
 
 def get_photo(filepath):
     # connect to the database
@@ -94,9 +96,9 @@ def get_all_photos():
         # unpack the data from the photo tuple
         id, filepath, folder_path, location, timestamp = photo
 
-        # sets the data variable to a list of tuples (image_id: int, tag: str) and maps it to a list of only the tags
+        # sets the data variable to a list of tuples (photo_id: int, tag: str) and maps it to a list of only the tags
         # this creates a list of every tag associated with that image
-        cursor.execute('SELECT * FROM image_tags WHERE image_id = ?', (id,))
+        cursor.execute('SELECT * FROM photo_tags WHERE photo_id = ?', (id,))
         data = cursor.fetchall()
         tags = [tag[1] for tag in data]
 
@@ -107,6 +109,21 @@ def get_all_photos():
     conn.close()
 
     return photo_data
+
+def get_found_tags():
+    # connect to the database
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM photo_tags')
+    photo_tags = cursor.fetchall()
+
+    tags = set([tag[1] for tag in photo_tags])
+
+    # close the connection to the database
+    conn.close()
+
+    return tags
 
 def is_photo_in_database(filepath):
     # connect to the database
@@ -131,22 +148,43 @@ def add_photo_to_database(filepath, folder_path, location, timestamp, tags):
     cursor = conn.cursor()
 
     # add the data from the image to the photos table
-    cursor.execute('INSERT INTO photos (filepath, folder_path, location, timestamp) VALUES (?, ?, ?, ?)', (filepath, folder_path, location, timestamp))
+    cursor.execute('INSERT OR REPLACE INTO photos (filepath, folder_path, location, timestamp) VALUES (?, ?, ?, ?)', (filepath, folder_path, location, timestamp))
 
-    # iterate through tags and add each entry to the image_tags database
+    # iterate through tags and add each entry to the photo_tags database
     for tag in tags:
-        # if the tag isn't already in the tags table, add it
-        cursor.execute('INSERT OR IGNORE INTO tags (tag) VALUES (?)', (tag,))
-
         # get the size of the photos table
         cursor.execute('SELECT MAX(id) FROM photos')
         max_id = cursor.fetchone()
+        print(max_id, tag)
         
-        # add a connection from the image id to the tag
-        # this allows one image to be associated with multiple tags
-        cursor.execute('INSERT INTO image_tags (image_id, tag_id) VALUES (?, ?)', (max_id[0], tag))
+        # add a connection from the photo id to the tag
+        # this allows one photo to be associated with multiple tags
+        cursor.execute('INSERT INTO photo_tags (photo_id, tag_name) VALUES (?, ?)', (max_id[0], tag))
 
     # commit the changes and close the connection
+    conn.commit()
+    conn.close()
+
+def get_faces():
+    # connect to the database
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM faces')
+    faces = cursor.fetchall()
+
+    # close the connection to the database
+    conn.close()
+
+    return faces
+
+def add_face_to_database(name, embedding_as_blob):
+    # connect to the database
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('INSERT OR REPLACE INTO faces (name, embedding) VALUES (?, ?)', (name, embedding_as_blob))
+
     conn.commit()
     conn.close()
 
@@ -255,3 +293,27 @@ def set_last_opened_dir(last_opened_dir):
 
     conn.commit()
     conn.close()
+
+def print_table(db_path, table_name):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # fetch all rows from the table
+    cursor.execute(f"SELECT * FROM {table_name}")
+    rows = cursor.fetchall()
+
+    # get column names
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [col[1] for col in cursor.fetchall()]
+
+    # print column names
+    print(" | ".join(columns))
+    print("-" * 50)
+
+    # print rows
+    for row in rows:
+        print(" | ".join(map(str, row)))
+
+    conn.close()
+
+#print_table('database.db', 'faces')
