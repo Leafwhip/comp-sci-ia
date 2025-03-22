@@ -7,9 +7,9 @@ import database_manager
 
 import re
 
-# Initialize the FaceAnalysis model
+# initialize the FaceAnalysis model
 app = FaceAnalysis(name='buffalo_l')
-app.prepare(ctx_id=0, det_size=(640, 640))  # Use GPU (if available) with ctx_id=0 (WHAt DOEs THIS MEAN!)
+app.prepare(ctx_id=0, det_size=(640, 640))
 
 def validate_path(filepath):
     # valid file extensions
