@@ -31,9 +31,13 @@ def detect_image(filepath):
 
     return list(tags)
 
+# gets the location and timestamp from a file
 def get_image_metadata(filepath):
     img = Image.open(filepath)
+
+    # get the image's EXIF data (its metadata)
     exif_data = img._getexif()
+
     location = {}
     timestamp = ''
 
@@ -41,23 +45,34 @@ def get_image_metadata(filepath):
         print('Image does not contain EXIF data.')
         return (None, None)
 
+    # get the location and timestamp from EXIF data
     for key, value in exif_data.items():
         if ExifTags.TAGS[key] == 'GPSInfo':
             location = value
         if ExifTags.TAGS[key] == 'DateTime':
             timestamp = value
-
-    latitude_dir, latitude_dms, longitude_dir, longitude_dms, _, _ = (val for val in location.values())
-    latitude_deg = float(latitude_dms[0] + latitude_dms[1] / 60 + latitude_dms[2] / 3600)
-    if latitude_dir == 'S':
-        latitude_deg *= -1
-    longitude_deg = float(longitude_dms[0] + longitude_dms[1] / 60 + longitude_dms[2] / 3600)
-    if longitude_dir == 'W':
-        longitude_deg *= -1
     
-    latitude_deg = round(latitude_deg, 4)
-    longitude_deg = round(longitude_deg, 4)
+    # set location to None if EXIF data exists but GPSInfo doesn't
+    if location:
+        # parse the gps info to more useful coordinates
+        # turns DMS (Degrees, Minutes, Secons) to decimal degrees
+        # using the formula: decimal degrees = degrees + minutes / 60 + seconds / 3600
+        latitude_dir, latitude_dms, longitude_dir, longitude_dms, _, _ = (val for val in location.values())
+        latitude_deg = float(latitude_dms[0] + latitude_dms[1] / 60 + latitude_dms[2] / 3600)
+        if latitude_dir == 'S':
+            latitude_deg *= -1
+        longitude_deg = float(longitude_dms[0] + longitude_dms[1] / 60 + longitude_dms[2] / 3600)
+        if longitude_dir == 'W':
+            longitude_deg *= -1
+        
+        latitude_deg = round(latitude_deg, 4)
+        longitude_deg = round(longitude_deg, 4)
+        
+        location = f'{latitude_deg},{longitude_deg}'
+    else:
+        location = None
     
-    location = f'{latitude_deg},{longitude_deg}'
+    # set timestamp to None if EXIF data exists but DateTime doesn't
+    timestamp = timestamp if timestamp else None
             
     return (location, timestamp)

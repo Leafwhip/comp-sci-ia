@@ -22,22 +22,26 @@ def init_database():
             tag_name TEXT
             )''')
     
+    # creates the faces table which contains the name and embeddings of each face
     cursor.execute('''CREATE TABLE IF NOT EXISTS faces (
             name TEXT UNIQUE NOT NULL,
             embedding BLOB NOT NULL
             )''')
     
+    # creates the folders table which contains added folders
     cursor.execute('''CREATE TABLE IF NOT EXISTS folders (
             folder_path TEXT UNIQUE NOT NULL
             )''')
 
+    # creates the settings table which contains miscellaneous data
     cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
             id INTEGER UNIQUE NOT NULL,
             use_metadata BOOLEAN,
             max_photos INTEGER,
             last_opened_dir TEXT
             )''')
-        
+    
+    # set up the default settings
     cursor.execute('INSERT OR IGNORE INTO settings (id, use_metadata, max_photos, last_opened_dir) VALUES (?, ?, ?, ?)', (1, False, 25, '/'))
     
     # commit the changes and close the connection
@@ -110,14 +114,15 @@ def get_all_photos():
 
     return photo_data
 
+# get a list of all the tags in the database
 def get_found_tags():
     # connect to the database
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     
+    # get every entry in photo_tags and map the list to only tags
     cursor.execute('SELECT * FROM photo_tags')
     photo_tags = cursor.fetchall()
-
     tags = set([tag[1] for tag in photo_tags])
 
     # close the connection to the database
@@ -125,21 +130,20 @@ def get_found_tags():
 
     return tags
 
+# returns True if the filepath exists in the database, otherwise returns False
 def is_photo_in_database(filepath):
     # connect to the database
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     
+    # Get an entry with the filepath from the database
     cursor.execute('SELECT 1 FROM photos WHERE filepath = ?', (filepath,))
     result = cursor.fetchone()
 
     # close the connection to the database
     conn.close()
 
-    if result:
-        return True
-    else:
-        return False
+    return True if result else False
 
 # adds a photo to the database once it's detected
 def add_photo_to_database(filepath, folder_path, location, timestamp, tags):
@@ -155,7 +159,6 @@ def add_photo_to_database(filepath, folder_path, location, timestamp, tags):
         # get the size of the photos table
         cursor.execute('SELECT MAX(id) FROM photos')
         max_id = cursor.fetchone()
-        print(max_id, tag)
         
         # add a connection from the photo id to the tag
         # this allows one photo to be associated with multiple tags
@@ -165,6 +168,7 @@ def add_photo_to_database(filepath, folder_path, location, timestamp, tags):
     conn.commit()
     conn.close()
 
+# returns a list of faces (name and embedding) from the database
 def get_faces():
     # connect to the database
     conn = sqlite3.connect('database.db')
@@ -178,13 +182,16 @@ def get_faces():
 
     return faces
 
+# add a name and embedding to the database
 def add_face_to_database(name, embedding_as_blob):
     # connect to the database
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     
+    # add the data to the database
     cursor.execute('INSERT OR REPLACE INTO faces (name, embedding) VALUES (?, ?)', (name, embedding_as_blob))
 
+    # commit changes and close the connection
     conn.commit()
     conn.close()
 
@@ -193,9 +200,11 @@ def get_folders():
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     
+    # get all the folders
     cursor.execute('SELECT * FROM folders')
     folders = cursor.fetchall()
 
+    # each entry is a tuple so it needs to be converted to string
     folders = [folder[0] for folder in folders]
 
     # close the connection to the database
@@ -203,28 +212,37 @@ def get_folders():
 
     return folders
 
+# add a folder path to the database
 def add_folder(folder_path):
     # connect to the database
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     
+    # add the path to the database
     cursor.execute('INSERT OR IGNORE INTO folders (folder_path) VALUES (?)', (folder_path,))
 
+    # commit changes and close the connection
     conn.commit()
     conn.close()
 
+# remove a folder from the database
 def remove_folder(folder_path):
     print(folder_path)
     # connect to the database
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     
+    # delete the folder path from the folders table
     cursor.execute('DELETE FROM folders WHERE folder_path = (?)', (folder_path,))
+
+    # delete all photos with that folder path from the photos table
     cursor.execute('DELETE FROM photos WHERE folder_path = (?)', (folder_path,))
 
+    # commit changes and close the connection
     conn.commit()
     conn.close()
 
+# the rest of these are just various getters and setters
 def get_use_metadata():
     # connect to the database
     conn = sqlite3.connect('database.db')
