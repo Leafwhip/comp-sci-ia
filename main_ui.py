@@ -26,10 +26,6 @@ class MainUI:
         self.window.geometry('1920x1080')
         self.window.title('AI Image Finder')
 
-        # sets the window's icon to icon.png
-        self.icon = ImageTk.PhotoImage(Image.open('icon.png'))
-        self.window.iconphoto(True, self.icon)
-
         # text label above the main textbox
         self.input_label = tk.Label(self.window, text='Enter your image request below:')
         self.input_label.pack()

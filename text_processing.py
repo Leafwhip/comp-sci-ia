@@ -15,22 +15,6 @@ MONTH_FACTOR = 5
 DAY_FACTOR = 1
 MATCH_FACTOR = 7
 
-# returns True if the path is compatible with YOLO, otherwise returns False
-def validate_path(filepath):
-    # valid file extensions
-    images = {'webp', 'dng', 'tif', 'tiff', 'mpo', 'jpg', 'bmp', 'heic', 'png', 'jpeg', 'pfm'}
-    videos = {'mkv', 'ts', 'mp4', 'wmv', 'mpeg', 'asf', 'webm', 'avi', 'm4v', 'mpg', 'mov', 'gif'}
-
-    # get the file extension of the filepath
-    file_type = re.split(r'\.', filepath)[-1]
-    
-    # make sure the file extension is compatible with YOLO
-    if file_type in images or file_type in videos:
-        return True
-    
-    # if the file extension is invalid, YOLO won't run
-    return False
-
 # turns a location in the form Latitude(°N),Longitude(°E) to Latitude° N/S, Longitude° E/W
 # used to display in image details
 def location_to_readable(location):

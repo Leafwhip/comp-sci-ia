@@ -76,6 +76,12 @@ class SettingsUI:
         self.reprocess_folder_button.pack(padx=10, pady=10, side=tk.LEFT)
         self.reprocess_folder_button.config(state=tk.DISABLED)
 
+        # button that cancels the processing of a folder
+        self.processing_disabled = True
+        self.cancel_processing_button = tk.Button(self.buttons_frame, text='Cancel Processing', command=lambda: self.cancel_processing())
+        self.cancel_processing_button.pack(padx=10, pady=10, side=tk.LEFT)
+        self.cancel_processing_button.config(state=tk.DISABLED)
+
     # asks user to input a folder and adds it to the listbox and database
     def add_folder(self):
         # start the file search from where it was last opened
@@ -106,6 +112,7 @@ class SettingsUI:
         self.remove_folder_button.config(state=tk.DISABLED)
         self.process_folder_button.config(state=tk.DISABLED)
         self.reprocess_folder_button.config(state=tk.DISABLED)
+        self.cancel_processing_button.config(state=tk.DISABLED)
         # deselect the selected folder
         self.folders_listbox.selection_clear(0, tk.END)
 
@@ -125,26 +132,39 @@ class SettingsUI:
         if selected_index:
             # make the user confirm that they want to process the folder
             if messagebox.askokcancel('Confirm', 'Are you sure you want to process this folder? This may take a while depending on the size of the folder.', parent=self.settings_window):
-                self.process_folder(self.folders_listbox.get(selected_index), reprocess)
-                self.deselect_folder()
+                # enable the cancel processing button
+                self.processing_disabled = False
+                self.cancel_processing_button.config(state=tk.ACTIVE)
+
+                folder_path = self.folders_listbox.get(selected_index)
+                file_list = os.listdir(folder_path)
+                self.process_folder(folder_path, file_list, 0, reprocess)
 
     # process the selected folder
-    def process_folder(self, folder_path, reprocess):
-        print(folder_path)
-        # iterate through files in the folder
-        for filename in os.listdir(folder_path):
-            # analyze every file in the folder
-            filepath = os.path.join(folder_path, filename)
+    def process_folder(self, folder_path, file_list, index, reprocess):
+        if index < len(file_list) and not self.processing_disabled:
+            file_name = file_list[index]
+            filepath = os.path.join(folder_path, file_name)
             self.process_image(filepath, reprocess)
+            self.folders_label.config(text=f'Processing {file_name} ({index + 1}/{len(file_list)})')
+            
+            # process the next file in the folder
+            self.parent.after(25, self.process_folder, folder_path, file_list, index + 1, reprocess)
+        else:
+            # alert the user that processing has completed
+            messagebox.showinfo('Alert', 'Processing has finished.', parent=self.settings_window)
+            self.folders_label.config(text='List of inputted folders:')
+            self.deselect_folder()
 
     # process a single image in a folder
     def process_image(self, filepath, reprocess):
         # validate the filepath
-        if text_processing.validate_path(filepath):
+        if image_processing.validate_path(filepath):
             # don't process if it has already been processed
             if database_manager.is_photo_in_database(filepath) and not reprocess:
                 print('Photo already exists in database')
             else:
+                print(f'Processing: {filepath}')
                 # get all the image data (tags and faces)
                 folder_path = os.path.dirname(filepath)
                 location, timestamp = image_processing.get_image_metadata(filepath)
@@ -157,4 +177,8 @@ class SettingsUI:
                 database_manager.add_photo_to_database(filepath, folder_path, location, timestamp, tags)
         else:
             print('This file is not supported by YOLO')
+        
+    # cancel the processing of a folder
+    def cancel_processing(self):
+        self.processing_disabled = True
         

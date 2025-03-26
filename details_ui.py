@@ -70,7 +70,7 @@ class DetailsUI:
     def open_new_image_details(self, forward_bool):
         # change the index and open a new details window
         increment = 1 if forward_bool else -1
-        DetailsUI(self.photo_paths[self.current_index + increment], self.photo_paths, self.current_index + increment)
+        DetailsUI(self.parent, self.photo_paths[self.current_index + increment], self.photo_paths, self.current_index + increment)
         # close the current details window
         self.details_window.destroy()
 
@@ -80,8 +80,9 @@ class DetailsUI:
         name = simpledialog.askstring('', 'Enter this person\'s name, or leave blank to cancel', parent=self.details_window)
         if name is not None:
             # if the user inputted a name, add it to the database
-            database_manager.add_face_to_database(name, face_processing.embedding_to_blob(widget.embedding))
+            database_manager.add_face_to_database(name, face_processing.embedding_to_blob(widget.embedding), widget.name)
             widget.config(text=name)
+            widget.name = name
 
     # show the faces in the image
     def find_faces(self):
@@ -95,11 +96,13 @@ class DetailsUI:
         # for each face, create a label which holds its image and name
         for index, image in enumerate(face_thumbnails):
             tk_image = ImageTk.PhotoImage(image)
-            container_label = tk.Label(self.face_thumbnail_frame, image=tk_image, text=face_labels[index] or '???', compound='bottom')
+            face_name = face_labels[index]
+            container_label = tk.Label(self.face_thumbnail_frame, image=tk_image, text=face_name or '???', compound='bottom')
             # store tk_image in the label
             # without this line, the image gets garbage collected and fails to display
             container_label.image = tk_image
             container_label.embedding = faces[index].normed_embedding
+            container_label.name = face_name
             container_label.pack(padx=5, pady=5, side=tk.LEFT)
             # when the user clicks the image, run ask_save_face
             container_label.bind('<Button-1>', lambda e: self.ask_save_face(e.widget))

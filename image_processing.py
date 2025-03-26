@@ -8,6 +8,21 @@ import re
 # instantiate the YOLO model
 model = YOLO('yolo11n.pt')
 
+# returns True if the path is compatible with YOLO, otherwise returns False
+def validate_path(filepath):
+    # valid file extensions
+    valid_extensions = {'webp', 'dng', 'tif', 'tiff', 'mpo', 'jpg', 'bmp', 'heic', 'png', 'jpeg', 'pfm'}
+
+    # get the file extension of the filepath
+    file_type = re.split(r'\.', filepath)[-1]
+    
+    # make sure the file extension is compatible with YOLO
+    if file_type in valid_extensions:
+        return True
+    
+    # if the file extension is invalid, YOLO won't run
+    return False
+
 # returns a set of tags detected in an image/video file
 def detect_image(filepath):
     # YOLO11 analyzes the image

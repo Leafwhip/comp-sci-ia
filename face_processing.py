@@ -1,5 +1,6 @@
 # cv2 is required to run InsightFace
 import cv2
+print("cv2 version:", cv2.__version__)
 
 # numpy is used to calculate cosine similarity
 import numpy as np
@@ -13,7 +14,6 @@ from PIL import Image
 import re
 
 import database_manager
-
 
 # initialize the InsightFace model
 app = FaceAnalysis(name='buffalo_l')
@@ -43,15 +43,16 @@ def cosine_similarity(embedding1, embedding2):
 
 # runs InsightFace on an image to get a list of face data
 def detect_image(filepath):
+    # convert the image to cv2 so InsightFace can read it
+    image = cv2.imread(filepath)
     # continue if the file type is valid
     if validate_path(filepath):
-        # convert the image to cv2 so InsightFace can read it
-        image = cv2.imread(filepath)
         faces = app.get(image)
     
-        return image, faces
+        return image, faces or []
     else:
         print('This file is not supported by InsightFace')
+        return image, []
 
 # get a list of Pillow images of each face detected
 def get_face_thumbnails(image, faces):

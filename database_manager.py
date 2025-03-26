@@ -7,9 +7,8 @@ def init_database():
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
 
-    # creates the photos table with an id, the path to the image, and optionally the time and location of the image
+    # creates the photos table with the path to the image, and optionally the time and location of the image
     cursor.execute('''CREATE TABLE IF NOT EXISTS photos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
             filepath TEXT UNIQUE NOT NULL,
             folder_path TEXT NOT NULL,
             location TEXT,
@@ -18,8 +17,8 @@ def init_database():
 
     # creates the photo_tags table which matches each image to one or more tags
     cursor.execute('''CREATE TABLE IF NOT EXISTS photo_tags (
-            photo_id INTEGER,
-            tag_name TEXT
+            filepath TEXT NOT NULL,
+            tag_name TEXT NOT NULL
             )''')
     
     # creates the faces table which contains the name and embeddings of each face
@@ -80,7 +79,7 @@ def get_photo(filepath):
     # close the connection to the database
     conn.close()
 
-    return data[3:]
+    return data[2:]
 
 # returns the data from every photo in the database
 def get_all_photos():
@@ -98,15 +97,14 @@ def get_all_photos():
 
     for photo in photos:
         # unpack the data from the photo tuple
-        id, filepath, folder_path, location, timestamp = photo
+        filepath, folder_path, location, timestamp = photo
 
-        # sets the data variable to a list of tuples (photo_id: int, tag: str) and maps it to a list of only the tags
-        # this creates a list of every tag associated with that image
-        cursor.execute('SELECT * FROM photo_tags WHERE photo_id = ?', (id,))
+        # get a list of all entries in photo_tags with that filepath
+        cursor.execute('SELECT * FROM photo_tags WHERE filepath = ?', (filepath,))
         data = cursor.fetchall()
         tags = [tag[1] for tag in data]
 
-        # add this data to a tuple and append it to the photo_tags list
+        # add this data to a tuple and append it to the photo_data list
         photo_data.append((filepath, folder_path, location, timestamp, tags))
 
     # close the connection to the database
@@ -152,17 +150,16 @@ def add_photo_to_database(filepath, folder_path, location, timestamp, tags):
     cursor = conn.cursor()
 
     # add the data from the image to the photos table
-    cursor.execute('INSERT OR REPLACE INTO photos (filepath, folder_path, location, timestamp) VALUES (?, ?, ?, ?)', (filepath, folder_path, location, timestamp))
+    cursor.execute('INSERT OR REPLACE INTO photos (filepath, folder_path, location, timestamp) VALUES (?, ?, ?, ?)', (filepath, folder_path.lower(), location, timestamp))
+
+    # remove old tags associated with that filepath before adding new ones
+    cursor.execute('DELETE FROM photo_tags WHERE filepath = ?', (filepath,))
 
     # iterate through tags and add each entry to the photo_tags database
-    for tag in tags:
-        # get the size of the photos table
-        cursor.execute('SELECT MAX(id) FROM photos')
-        max_id = cursor.fetchone()
-        
-        # add a connection from the photo id to the tag
+    for tag in tags:        
+        # add a connection from the filepath to the tag
         # this allows one photo to be associated with multiple tags
-        cursor.execute('INSERT INTO photo_tags (photo_id, tag_name) VALUES (?, ?)', (max_id[0], tag))
+        cursor.execute('INSERT INTO photo_tags (filepath, tag_name) VALUES (?, ?)', (filepath, tag))
 
     # commit the changes and close the connection
     conn.commit()
@@ -183,12 +180,19 @@ def get_faces():
     return faces
 
 # add a name and embedding to the database
-def add_face_to_database(name, embedding_as_blob):
+def add_face_to_database(name, embedding_as_blob, prev_name):
+    print(name, prev_name)
     # connect to the database
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     
-    # add the data to the database
+    # delete the data of the old name if exists
+    cursor.execute('DELETE FROM faces WHERE name = (?)', (prev_name,))
+
+    # remove all references to the tag
+    cursor.execute('DELETE FROM photo_tags WHERE tag_name = ?', (prev_name,))
+
+    # add the name and embedding to the database
     cursor.execute('INSERT OR REPLACE INTO faces (name, embedding) VALUES (?, ?)', (name, embedding_as_blob))
 
     # commit changes and close the connection
