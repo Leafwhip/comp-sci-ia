@@ -39,7 +39,7 @@ class MainUI:
         self.submit_button = tk.Button(self.window, text='submit', command=self.submit)
         self.submit_button.pack()
 
-        # for testing ofc. remove this <3
+        # resets the database, for debugging and making changes to the database
         self.reset_database_button = tk.Button(self.window, text='reset database', command=database_manager.reset_database)
         self.reset_database_button.pack()
 
@@ -128,5 +128,3 @@ class MainUI:
     # opens the settings window
     def open_settings(self):
         settings_ui.SettingsUI(self.window)
-
-MainUI()

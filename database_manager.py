@@ -27,6 +27,12 @@ def init_database():
             embedding BLOB NOT NULL
             )''')
     
+    # create the photo_faces table which matches images to face embeddings within them
+    cursor.execute('''CREATE TABLE IF NOT EXISTS photo_faces (
+            filepath TEXT NOT NULL,
+            embedding BLOB NOT NULL       
+            )''')
+    
     # creates the folders table which contains added folders
     cursor.execute('''CREATE TABLE IF NOT EXISTS folders (
             folder_path TEXT UNIQUE NOT NULL
@@ -36,18 +42,19 @@ def init_database():
     cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
             id INTEGER UNIQUE NOT NULL,
             use_metadata BOOLEAN,
+            reprocess_images BOOLEAN,
             max_photos INTEGER,
             last_opened_dir TEXT
             )''')
     
     # set up the default settings
-    cursor.execute('INSERT OR IGNORE INTO settings (id, use_metadata, max_photos, last_opened_dir) VALUES (?, ?, ?, ?)', (1, False, 25, '/'))
+    cursor.execute('INSERT OR IGNORE INTO settings VALUES (?, ?, ?, ?, ?)', (1, False, False, 25, '/'))
     
     # commit the changes and close the connection
     conn.commit()
     conn.close()
 
-# remove all tables from the database (for debugging/modifying tables, should not be used)
+# reset all tables from the database
 def reset_database():
     # connect to the database
     conn = sqlite3.connect('database.db')
@@ -58,8 +65,25 @@ def reset_database():
     cursor.execute('DROP TABLE IF EXISTS tags')
     cursor.execute('DROP TABLE IF EXISTS photo_tags')
     cursor.execute('DROP TABLE IF EXISTS faces')
+    cursor.execute('DROP TABLE IF EXISTS photo_faces')
     cursor.execute('DROP TABLE IF EXISTS folders')
     cursor.execute('DROP TABLE IF EXISTS settings')
+
+    # commit the changes and close the connection
+    conn.commit()
+    conn.close()
+
+    init_database()
+
+# remove one table from the database and reset it
+# useful when there's an error with a table but you don't want to reset everything
+def reset_table(table):
+    # connect to the database
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+
+    # remove the selected table in the database
+    cursor.execute(f'DROP TABLE IF EXISTS {table}')
 
     # commit the changes and close the connection
     conn.commit()
@@ -92,7 +116,7 @@ def get_all_photos():
     photos = cursor.fetchall()
 
     # stores the data about each photo
-    # each entry in the list will be a tuple (filepath: str, folder_path: str, location: str, timestamp: str, tags: list[str])
+    # each entry in the list will be a tuple (filepath: str, folder_path: str, location: str, timestamp: str, tags: list[str], faces: list[blob])
     photo_data = []
 
     for photo in photos:
@@ -101,11 +125,15 @@ def get_all_photos():
 
         # get a list of all entries in photo_tags with that filepath
         cursor.execute('SELECT * FROM photo_tags WHERE filepath = ?', (filepath,))
-        data = cursor.fetchall()
-        tags = [tag[1] for tag in data]
+        tag_data = cursor.fetchall()
+        tags = [tag[1] for tag in tag_data]
+
+        cursor.execute('SELECT * from photo_faces WHERE filepath = ?', (filepath,))
+        face_data = cursor.fetchall()
+        faces = [face[1] for face in face_data]
 
         # add this data to a tuple and append it to the photo_data list
-        photo_data.append((filepath, folder_path, location, timestamp, tags))
+        photo_data.append((filepath, folder_path, location, timestamp, tags, faces))
 
     # close the connection to the database
     conn.close()
@@ -143,23 +171,42 @@ def is_photo_in_database(filepath):
 
     return True if result else False
 
+# adds a tag to an photo
+def add_tag_to_photo(filepath, tag_name):
+    # connect to the database
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    
+    # add the name and embedding to the database
+    cursor.execute('INSERT INTO photo_tags VALUES (?, ?)', (filepath, tag_name))
+
+    # commit changes and close the connection
+    conn.commit()
+    conn.close()
+
+
 # adds a photo to the database once it's detected
-def add_photo_to_database(filepath, folder_path, location, timestamp, tags):
+def add_photo_to_database(filepath, folder_path, location, timestamp, tags, face_embeddings):
     # connect to the database
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
 
     # add the data from the image to the photos table
-    cursor.execute('INSERT OR REPLACE INTO photos (filepath, folder_path, location, timestamp) VALUES (?, ?, ?, ?)', (filepath, folder_path.lower(), location, timestamp))
+    cursor.execute('INSERT OR REPLACE INTO photos VALUES (?, ?, ?, ?)', (filepath, folder_path, location, timestamp))
 
-    # remove old tags associated with that filepath before adding new ones
+    # remove old tags and face embeddings associated with that filepath before adding new ones
     cursor.execute('DELETE FROM photo_tags WHERE filepath = ?', (filepath,))
+    cursor.execute('DELETE FROM photo_faces WHERE filepath = ?', (filepath,))
 
     # iterate through tags and add each entry to the photo_tags database
     for tag in tags:        
         # add a connection from the filepath to the tag
         # this allows one photo to be associated with multiple tags
-        cursor.execute('INSERT INTO photo_tags (filepath, tag_name) VALUES (?, ?)', (filepath, tag))
+        cursor.execute('INSERT INTO photo_tags VALUES (?, ?)', (filepath, tag))
+
+    for embedding in face_embeddings:
+        # do the same thing with the face embeddings
+        cursor.execute('INSERT INTO photo_faces VALUES (?, ?)', (filepath, embedding))
 
     # commit the changes and close the connection
     conn.commit()
@@ -181,19 +228,17 @@ def get_faces():
 
 # add a name and embedding to the database
 def add_face_to_database(name, embedding_as_blob, prev_name):
-    print(name, prev_name)
     # connect to the database
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
     
     # delete the data of the old name if exists
-    cursor.execute('DELETE FROM faces WHERE name = (?)', (prev_name,))
-
-    # remove all references to the tag
-    cursor.execute('DELETE FROM photo_tags WHERE tag_name = ?', (prev_name,))
+    if prev_name:
+        cursor.execute('DELETE FROM faces WHERE name = (?)', (prev_name,))
+        cursor.execute('DELETE FROM photo_tags WHERE tag_name = (?)', (prev_name.lower(),))
 
     # add the name and embedding to the database
-    cursor.execute('INSERT OR REPLACE INTO faces (name, embedding) VALUES (?, ?)', (name, embedding_as_blob))
+    cursor.execute('INSERT OR REPLACE INTO faces VALUES (?, ?)', (name, embedding_as_blob))
 
     # commit changes and close the connection
     conn.commit()
@@ -223,7 +268,7 @@ def add_folder(folder_path):
     cursor = conn.cursor()
     
     # add the path to the database
-    cursor.execute('INSERT OR IGNORE INTO folders (folder_path) VALUES (?)', (folder_path,))
+    cursor.execute('INSERT OR IGNORE INTO folders VALUES (?)', (folder_path,))
 
     # commit changes and close the connection
     conn.commit()
@@ -270,6 +315,29 @@ def set_use_metadata(use_metadata):
     conn.commit()
     conn.close()
 
+def get_reprocess_images():
+    # connect to the database
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM settings')
+    data = cursor.fetchone()
+
+    # close the connection to the database
+    conn.close()
+
+    return bool(data[2])
+
+def set_reprocess_images(reprocess_images):
+    # connect to the database
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('UPDATE settings SET reprocess_images = ? WHERE id = 1', (reprocess_images,))
+
+    conn.commit()
+    conn.close()
+
 def get_max_photos():
     # connect to the database
     conn = sqlite3.connect('database.db')
@@ -281,7 +349,7 @@ def get_max_photos():
     # close the connection to the database
     conn.close()
 
-    return data[2]
+    return data[3]
 
 def set_max_photos(max_photos):
     # connect to the database
@@ -304,7 +372,7 @@ def get_last_opened_dir():
     # close the connection to the database
     conn.close()
 
-    return data[3]
+    return data[4]
 
 def set_last_opened_dir(last_opened_dir):
     # connect to the database
@@ -315,27 +383,3 @@ def set_last_opened_dir(last_opened_dir):
 
     conn.commit()
     conn.close()
-
-def print_table(db_path, table_name):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    # fetch all rows from the table
-    cursor.execute(f"SELECT * FROM {table_name}")
-    rows = cursor.fetchall()
-
-    # get column names
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    columns = [col[1] for col in cursor.fetchall()]
-
-    # print column names
-    print(" | ".join(columns))
-    print("-" * 50)
-
-    # print rows
-    for row in rows:
-        print(" | ".join(map(str, row)))
-
-    conn.close()
-
-#print_table('database.db', 'faces')

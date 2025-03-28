@@ -81,6 +81,20 @@ class DetailsUI:
         if name is not None:
             # if the user inputted a name, add it to the database
             database_manager.add_face_to_database(name, face_processing.embedding_to_blob(widget.embedding), widget.name)
+            
+            # add the tag for that face to images that contain it
+            photos_with_face = []
+            photos = database_manager.get_all_photos()
+            for photo_data in photos:
+                filepath, folder_path, location, timestamp, tags, faces = photo_data
+                face_embeddings = [face_processing.blob_to_embedding(blob) for blob in faces]
+                face_labels = face_processing.label_faces(face_embeddings)
+                if name in face_labels:
+                    photos_with_face.append(filepath)
+            
+            for filepath in photos_with_face:
+                database_manager.add_tag_to_photo(filepath, name.lower())
+
             widget.config(text=name)
             widget.name = name
 
@@ -91,7 +105,8 @@ class DetailsUI:
         # get Pillow images of each face
         face_thumbnails = face_processing.get_face_thumbnails(cv_image, faces)
         # label the faces if a match exists in the database
-        face_labels = face_processing.label_faces(faces)
+        face_embeddings = [face.normed_embedding for face in faces]
+        face_labels = face_processing.label_faces(face_embeddings)
         
         # for each face, create a label which holds its image and name
         for index, image in enumerate(face_thumbnails):

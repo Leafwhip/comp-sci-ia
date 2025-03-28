@@ -74,7 +74,7 @@ def get_face_thumbnails(image, faces):
     return face_thumbnails
 
 # get a list of names that correspond to each face
-def label_faces(faces):
+def label_faces(face_embeddings):
     face_labels = []
     # get each face from the database
     saved_faces = database_manager.get_faces()
@@ -82,8 +82,7 @@ def label_faces(faces):
     saved_faces = [(name, blob_to_embedding(embedding)) for name, embedding in saved_faces]
 
     # iterate through the faces detected in the image in the details ui
-    for face1 in faces:
-        embedding1 = face1.normed_embedding
+    for embedding1 in face_embeddings:
         # boolean to keep track of if the face has a name or not
         match_found = False
 

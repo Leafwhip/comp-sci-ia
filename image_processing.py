@@ -48,10 +48,14 @@ def detect_image(filepath):
 
 # gets the location and timestamp from a file
 def get_image_metadata(filepath):
-    img = Image.open(filepath)
+    image = Image.open(filepath)
 
     # get the image's EXIF data (its metadata)
-    exif_data = img._getexif()
+    if not hasattr(image, '_getexif'):
+        print('Image does not contain EXIF data.')
+        return (None, None)
+
+    exif_data = image._getexif()
 
     location = {}
     timestamp = ''
@@ -72,7 +76,13 @@ def get_image_metadata(filepath):
         # parse the gps info to more useful coordinates
         # turns DMS (Degrees, Minutes, Secons) to decimal degrees
         # using the formula: decimal degrees = degrees + minutes / 60 + seconds / 3600
-        latitude_dir, latitude_dms, longitude_dir, longitude_dms, _, _ = (val for val in location.values())
+
+        # account for different displays of location (with and without altitude)
+        if len(location.values()) == 6:
+            latitude_dir, latitude_dms, longitude_dir, longitude_dms, _, _ = (val for val in location.values())
+        elif len(location.values()) == 4:
+            latitude_dir, latitude_dms, longitude_dir, longitude_dms = (val for val in location.values())
+
         latitude_deg = float(latitude_dms[0] + latitude_dms[1] / 60 + latitude_dms[2] / 3600)
         if latitude_dir == 'S':
             latitude_deg *= -1

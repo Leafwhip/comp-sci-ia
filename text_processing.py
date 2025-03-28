@@ -8,11 +8,11 @@ import re
 from datetime import datetime
 
 # constants that adjust how score is calculated
-LOCATION_FACTOR = 5
+LOCATION_FACTOR = 10
 METADATA_STRICTNESS = 5
-YEAR_FACTOR = 3
-MONTH_FACTOR = 5
-DAY_FACTOR = 1
+YEAR_FACTOR = 7
+MONTH_FACTOR = 7
+DAY_FACTOR = 7
 MATCH_FACTOR = 7
 
 # turns a location in the form Latitude(°N),Longitude(°E) to Latitude° N/S, Longitude° E/W
@@ -147,7 +147,7 @@ def search(photos, request_output, max_photos):
     # iterate through the photos list
     for photo_data in photos:
         # get all the photo data
-        filepath, folder_path, location, timestamp, photo_tags = photo_data
+        filepath, folder_path, location, timestamp, photo_tags, photo_faces = photo_data
         print(filepath, location, timestamp, photo_tags)
         
         # score represents how strongly an image's data matches the request data

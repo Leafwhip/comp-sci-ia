@@ -21,8 +21,8 @@ class SettingsUI:
         self.settings_window.geometry('1152x648')
 
         # create the checkbox to toggle metadata in searches
-        self.is_checked = tk.BooleanVar(value=database_manager.get_use_metadata())
-        self.metadata_checkbox = tk.Checkbutton(self.settings_window, text='Use metadata? (Takes longer but gives more accurate results)', variable=self.is_checked, command=lambda: database_manager.set_use_metadata(self.is_checked.get()))
+        self.use_metadata = tk.BooleanVar(value=database_manager.get_use_metadata())
+        self.metadata_checkbox = tk.Checkbutton(self.settings_window, text='Use metadata? (Takes longer but gives more accurate results)', variable=self.use_metadata, command=lambda: database_manager.set_use_metadata(self.use_metadata.get()))
         self.metadata_checkbox.pack(pady=10)
 
         # label for the max photos combobox
@@ -31,7 +31,7 @@ class SettingsUI:
 
         # create the max photos combobox
         # changes the maximum number of photos that will be displayed
-        max_photos_values = [10, 25, 50, 75, 100]
+        max_photos_values = [5, 10, 25, 50, 75, 100]
         self.max_photos_combobox = ttk.Combobox(self.settings_window, values=max_photos_values, state='readonly')
         self.max_photos_combobox.pack(pady=20)
         self.max_photos_combobox.current(max_photos_values.index(database_manager.get_max_photos()))
@@ -42,7 +42,7 @@ class SettingsUI:
         self.folders_label.pack()
 
         # create the listbox to hold inputted folders
-        self.folders_listbox = tk.Listbox(self.settings_window, width=50)
+        self.folders_listbox = tk.Listbox(self.settings_window, width=100)
         self.folders_listbox.pack(pady=10)
         # load previously added folders
         folders_list = database_manager.get_folders()
@@ -66,21 +66,20 @@ class SettingsUI:
 
         # button that processes the selected folder
         # disabled when no folder is selected
-        self.process_folder_button = tk.Button(self.buttons_frame, text='Process Folder', command=lambda: self.process_selected_folder(False))
+        self.process_folder_button = tk.Button(self.buttons_frame, text='Process Folder', command=lambda: self.process_selected_folder())
         self.process_folder_button.pack(padx=10, pady=10, side=tk.LEFT)
         self.process_folder_button.config(state=tk.DISABLED)
-
-        # button that reprocesses the selected folder (doesn't skip over already processed files)
-        # disabled when no folder is selected
-        self.reprocess_folder_button = tk.Button(self.buttons_frame, text='Reprocess Folder', command=lambda: self.process_selected_folder(True))
-        self.reprocess_folder_button.pack(padx=10, pady=10, side=tk.LEFT)
-        self.reprocess_folder_button.config(state=tk.DISABLED)
 
         # button that cancels the processing of a folder
         self.processing_disabled = True
         self.cancel_processing_button = tk.Button(self.buttons_frame, text='Cancel Processing', command=lambda: self.cancel_processing())
         self.cancel_processing_button.pack(padx=10, pady=10, side=tk.LEFT)
         self.cancel_processing_button.config(state=tk.DISABLED)
+
+        # checkbox for reprocessing already seen imags
+        self.reprocess_images = tk.BooleanVar(value=database_manager.get_reprocess_images())
+        self.reprocessing_checkbox = tk.Checkbutton(self.settings_window, text='Reprocess duplicate photos', variable=self.reprocess_images, command=lambda: database_manager.set_reprocess_images(self.reprocess_images.get()))
+        self.reprocessing_checkbox.pack(pady=10)
 
     # asks user to input a folder and adds it to the listbox and database
     def add_folder(self):
@@ -104,14 +103,12 @@ class SettingsUI:
         # activate the buttons
         self.remove_folder_button.config(state=tk.ACTIVE)
         self.process_folder_button.config(state=tk.ACTIVE)
-        self.reprocess_folder_button.config(state=tk.ACTIVE)
 
     # runs after removing or processing a folder
     def deselect_folder(self):
         # deactivate the buttons
         self.remove_folder_button.config(state=tk.DISABLED)
         self.process_folder_button.config(state=tk.DISABLED)
-        self.reprocess_folder_button.config(state=tk.DISABLED)
         self.cancel_processing_button.config(state=tk.DISABLED)
         # deselect the selected folder
         self.folders_listbox.selection_clear(0, tk.END)
@@ -127,7 +124,7 @@ class SettingsUI:
             self.deselect_folder()
 
     # process every image in the selected folder
-    def process_selected_folder(self, reprocess):
+    def process_selected_folder(self):
         selected_index = self.folders_listbox.curselection()
         if selected_index:
             # make the user confirm that they want to process the folder
@@ -138,18 +135,23 @@ class SettingsUI:
 
                 folder_path = self.folders_listbox.get(selected_index)
                 file_list = os.listdir(folder_path)
-                self.process_folder(folder_path, file_list, 0, reprocess)
+                self.process_folder(folder_path, file_list, 0)
 
     # process the selected folder
-    def process_folder(self, folder_path, file_list, index, reprocess):
+    def process_folder(self, folder_path, file_list, index):
         if index < len(file_list) and not self.processing_disabled:
             file_name = file_list[index]
             filepath = os.path.join(folder_path, file_name)
-            self.process_image(filepath, reprocess)
-            self.folders_label.config(text=f'Processing {file_name} ({index + 1}/{len(file_list)})')
+            self.process_image(filepath)
+
+            # update the label to show what is processing
+            # it actually shows the next file since it doesn't update until processing the current file finishes
+            # which lets it remain accurate
+            if index < len(file_list) - 1:
+                self.folders_label.config(text=f'Processing {file_list[index + 1]} ({index + 2}/{len(file_list)})')
             
             # process the next file in the folder
-            self.parent.after(25, self.process_folder, folder_path, file_list, index + 1, reprocess)
+            self.parent.after(25, self.process_folder, folder_path, file_list, index + 1)
         else:
             # alert the user that processing has completed
             messagebox.showinfo('Alert', 'Processing has finished.', parent=self.settings_window)
@@ -157,11 +159,11 @@ class SettingsUI:
             self.deselect_folder()
 
     # process a single image in a folder
-    def process_image(self, filepath, reprocess):
+    def process_image(self, filepath):
         # validate the filepath
         if image_processing.validate_path(filepath):
             # don't process if it has already been processed
-            if database_manager.is_photo_in_database(filepath) and not reprocess:
+            if database_manager.is_photo_in_database(filepath) and not self.reprocess_images.get():
                 print('Photo already exists in database')
             else:
                 print(f'Processing: {filepath}')
@@ -170,11 +172,12 @@ class SettingsUI:
                 location, timestamp = image_processing.get_image_metadata(filepath)
                 tags = image_processing.detect_image(filepath)
                 faces = face_processing.detect_image(filepath)[1]
-                face_tags = list(set(face_processing.label_faces(faces)))
+                face_embeddings = [face.normed_embedding for face in faces]
+                face_tags = list(set(face_processing.label_faces(face_embeddings)))
                 face_tags = [name for name in face_tags if name]
                 tags += face_tags
                 # add it to the database
-                database_manager.add_photo_to_database(filepath, folder_path, location, timestamp, tags)
+                database_manager.add_photo_to_database(filepath, folder_path, location, timestamp, tags, face_embeddings)
         else:
             print('This file is not supported by YOLO')
         

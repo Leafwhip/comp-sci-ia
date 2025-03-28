@@ -1,0 +1,7 @@
+Installation instructions (for Windows 10+)
+1. Make sure python version 3.9.0 is installed and added to your path (verify by running the command: python --version)
+2. Install the dependencies by opening a terminal from the product directory and running: pip install -r requirements.txt
+3. Install Ollama from ollama.com
+4. Pull LLaMa3.2 by running the command: ollama pull llama3.2
+5. Double click AI_ImageSearch.exe to run the product
+6. If antivirus flags it, either disable the antivirus and run it again or open a terminal from the product directory and run the command: python main_ui.py
